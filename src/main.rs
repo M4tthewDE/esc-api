@@ -26,7 +26,7 @@ impl Responder for Ranking {
     }
 }
 
-fn test_ranking() -> Ranking {
+fn _test_ranking() -> Ranking {
     Ranking {
         name: "test".to_string(),
         countries: vec![
@@ -38,14 +38,15 @@ fn test_ranking() -> Ranking {
 }
 
 #[post("/ranking")]
-async fn post_ranking(_ranking: web::Json<Ranking>, data: web::Data<AppState>) -> impl Responder {
-    let test_ranking = test_ranking();
+async fn post_ranking(ranking: web::Json<Ranking>, data: web::Data<AppState>) -> impl Responder {
+    let r = ranking.0;
+
     data.db
         .fluent()
-        .insert()
-        .into(COLLECTION_NAME)
-        .document_id(&test_ranking.name)
-        .object(&test_ranking)
+        .update()
+        .in_col(COLLECTION_NAME)
+        .document_id(&r.name)
+        .object(&r)
         .execute::<Ranking>()
         .await
         .unwrap();
