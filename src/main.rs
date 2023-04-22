@@ -1,11 +1,13 @@
 use actix_web::{
     body::BoxBody, get, http::header::ContentType, post, web, App, HttpRequest, HttpResponse,
-    HttpServer, Responder, Result,
+    HttpServer, Responder,
 };
 use firestore::FirestoreDb;
 use serde::{Deserialize, Serialize};
 
-const COLLECTION_NAME: &'static str = "esc-api";
+const RANKINGS_COLLECTION: &'static str = "rankings";
+const ENDRESULT_COLLECTION: &'static str = "endresult";
+const ENDRESULT_ID: &'static str = "endresult_id";
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 struct Ranking {
@@ -26,17 +28,6 @@ impl Responder for Ranking {
     }
 }
 
-fn _test_ranking() -> Ranking {
-    Ranking {
-        name: "test".to_string(),
-        countries: vec![
-            "Germany".to_string(),
-            "France".to_string(),
-            "Italy".to_string(),
-        ],
-    }
-}
-
 #[post("/ranking")]
 async fn post_ranking(ranking: web::Json<Ranking>, data: web::Data<AppState>) -> impl Responder {
     let r = ranking.0;
@@ -44,7 +35,7 @@ async fn post_ranking(ranking: web::Json<Ranking>, data: web::Data<AppState>) ->
     data.db
         .fluent()
         .update()
-        .in_col(COLLECTION_NAME)
+        .in_col(RANKINGS_COLLECTION)
         .document_id(&r.name)
         .object(&r)
         .execute::<Ranking>()
@@ -62,7 +53,7 @@ async fn get_ranking(path: web::Path<String>, data: web::Data<AppState>) -> impl
         .db
         .fluent()
         .select()
-        .by_id_in(COLLECTION_NAME)
+        .by_id_in(RANKINGS_COLLECTION)
         .obj::<Ranking>()
         .one(name)
         .await
@@ -77,17 +68,30 @@ struct EndResult {
     countries: Vec<String>,
 }
 
-#[get("/result")]
-async fn result() -> Result<impl Responder> {
-    let result = EndResult {
-        countries: vec![
-            "Germany".to_string(),
-            "France".to_string(),
-            "Italy".to_string(),
-        ],
-    };
+impl Responder for EndResult {
+    type Body = BoxBody;
 
-    Ok(web::Json(result))
+    fn respond_to(self, _req: &HttpRequest) -> HttpResponse<Self::Body> {
+        let body = serde_json::to_string(&self).unwrap();
+
+        // Create response and set content type
+        HttpResponse::Ok()
+            .content_type(ContentType::json())
+            .body(body)
+    }
+}
+
+#[get("/result")]
+async fn result(data: web::Data<AppState>) -> impl Responder {
+    data.db
+        .fluent()
+        .select()
+        .by_id_in(ENDRESULT_COLLECTION)
+        .obj::<EndResult>()
+        .one(ENDRESULT_ID)
+        .await
+        .unwrap()
+        .expect("ranking not found")
 }
 
 struct AppState {
