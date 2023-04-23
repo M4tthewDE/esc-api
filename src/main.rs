@@ -29,7 +29,14 @@ impl Responder for Ranking {
 }
 
 #[post("/ranking")]
-async fn post_ranking(ranking: web::Json<Ranking>, data: web::Data<AppState>) -> impl Responder {
+async fn post_ranking(
+    ranking: web::Json<Ranking>,
+    data: web::Data<AppState>,
+    req: HttpRequest,
+) -> impl Responder {
+    if !authorized(data.secret.clone(), req) {
+        return HttpResponse::Unauthorized().finish();
+    }
     let r = ranking.0;
 
     data.db
@@ -42,11 +49,18 @@ async fn post_ranking(ranking: web::Json<Ranking>, data: web::Data<AppState>) ->
         .await
         .unwrap();
 
-    HttpResponse::Ok()
+    HttpResponse::Ok().finish()
 }
 
 #[get("/ranking/{name}")]
-async fn get_ranking(path: web::Path<String>, data: web::Data<AppState>) -> impl Responder {
+async fn get_ranking(
+    path: web::Path<String>,
+    data: web::Data<AppState>,
+    req: HttpRequest,
+) -> impl Responder {
+    if !authorized(data.secret.clone(), req) {
+        return HttpResponse::Unauthorized().finish();
+    }
     let name = path.into_inner();
 
     let ranking = data
@@ -60,7 +74,8 @@ async fn get_ranking(path: web::Path<String>, data: web::Data<AppState>) -> impl
         .unwrap()
         .expect("ranking not found");
 
-    ranking
+    let body = serde_json::to_string(&ranking).unwrap();
+    HttpResponse::Ok().body(body)
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -82,8 +97,13 @@ impl Responder for EndResult {
 }
 
 #[get("/result")]
-async fn result(data: web::Data<AppState>) -> impl Responder {
-    data.db
+async fn result(data: web::Data<AppState>, req: HttpRequest) -> impl Responder {
+    if !authorized(data.secret.clone(), req) {
+        return HttpResponse::Unauthorized().finish();
+    }
+
+    let result = data
+        .db
         .fluent()
         .select()
         .by_id_in(ENDRESULT_COLLECTION)
@@ -91,11 +111,23 @@ async fn result(data: web::Data<AppState>) -> impl Responder {
         .one(ENDRESULT_ID)
         .await
         .unwrap()
-        .expect("ranking not found")
+        .expect("ranking not found");
+
+    let body = serde_json::to_string(&result).unwrap();
+    HttpResponse::Ok().body(body)
+}
+
+fn authorized(secret: String, req: HttpRequest) -> bool {
+    let header = req.headers().get("Authorization");
+    return match header {
+        None => false,
+        Some(s) => s.to_str().unwrap() == secret,
+    };
 }
 
 struct AppState {
     db: FirestoreDb,
+    secret: String,
 }
 
 #[actix_web::main]
@@ -105,12 +137,19 @@ async fn main() -> std::io::Result<()> {
         Err(_) => 8080,
     };
 
-    let db = FirestoreDb::new("esc-api-384517").await.unwrap();
+    let secret = match std::env::var("SECRET") {
+        Ok(s) => s,
+        Err(_) => "hunter2".to_string(),
+    };
 
+    let db = FirestoreDb::new("esc-api-384517").await.unwrap();
     println!("Starting esc-api on port {}...", port);
     HttpServer::new(move || {
         App::new()
-            .app_data(web::Data::new(AppState { db: db.clone() }))
+            .app_data(web::Data::new(AppState {
+                db: db.clone(),
+                secret: secret.clone(),
+            }))
             .service(post_ranking)
             .service(get_ranking)
             .service(result)
