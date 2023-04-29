@@ -4,6 +4,19 @@ docker-build:
 docker-run:
     docker run -d -p 8080:8080 --name esc-api esc-api:latest
 
+docker-run-release:
+    docker run -d -p 8080:8080 --name esc-api gcr.io/esc-api-384517/esc-api
+
+docker-clean:
+    docker container stop esc-api
+    docker container rm esc-api
+
+docker-build-release:
+    docker build --tag gcr.io/esc-api-384517/esc-api:latest .
+
+docker-push-release:
+    docker push gcr.io/esc-api-384517/esc-api:latest
+
 post-ranking:
     curl -X POST localhost:8080/ranking \
     -H 'Content-Type: application/json' \
