@@ -4,10 +4,12 @@ use actix_web::{
 };
 use env_logger::Env;
 use firestore::FirestoreDb;
+use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 
 const RANKINGS_COLLECTION: &'static str = "rankings";
 const ENDRESULT_COLLECTION: &'static str = "endresult";
+const USER_COLLECTION: &'static str = "user";
 const ENDRESULT_ID: &'static str = "endresult_id";
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -66,6 +68,55 @@ async fn get_ranking(path: web::Path<String>, data: web::Data<AppState>) -> impl
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+struct User {
+    name: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct Claims {
+    aud: String,
+    iss: String,
+    exp: usize,
+    sub: String,
+}
+
+#[post("/user")]
+async fn post_user(
+    user: web::Json<User>,
+    req: HttpRequest,
+    data: web::Data<AppState>,
+) -> impl Responder {
+    let id_token = req.headers().get("Id-Token").unwrap().to_str().unwrap();
+
+    let keys = reqwest::get("https://www.googleapis.com/oauth2/v3/certs")
+        .await
+        .unwrap()
+        .json::<Keys>()
+        .await
+        .unwrap();
+
+    let key = keys.keys.get(0).unwrap();
+    let token = decode::<Claims>(
+        &id_token,
+        &DecodingKey::from_rsa_components(&key.n, &key.e).unwrap(),
+        &Validation::new(Algorithm::RS256),
+    )
+    .unwrap();
+
+    data.db
+        .fluent()
+        .update()
+        .in_col(USER_COLLECTION)
+        .document_id(&token.claims.sub)
+        .object(&user.0)
+        .execute::<User>()
+        .await
+        .unwrap();
+
+    HttpResponse::Ok()
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
 struct EndResult {
     countries: Vec<String>,
 }
@@ -119,6 +170,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .wrap(Logger::default())
             .app_data(web::Data::new(AppState { db: db.clone() }))
+            .service(post_user)
             .service(post_ranking)
             .service(get_ranking)
             .service(result)
@@ -126,4 +178,15 @@ async fn main() -> std::io::Result<()> {
     .bind(("0.0.0.0", port))?
     .run()
     .await
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+struct Keys {
+    keys: Vec<Key>,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
+struct Key {
+    n: String,
+    e: String,
 }
