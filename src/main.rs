@@ -91,7 +91,7 @@ async fn result(data: web::Data<AppState>) -> impl Responder {
         .select()
         .by_id_in(ENDRESULT_COLLECTION)
         .obj::<EndResult>()
-        .one(ENDRESULT_ID)
+        .one(ENDRESULT_ID.to_string())
         .await
         .unwrap()
         .expect("ranking not found");
