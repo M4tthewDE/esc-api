@@ -1,7 +1,8 @@
 use actix_web::{
-    body::BoxBody, get, http::header::ContentType, post, web, App, HttpRequest, HttpResponse,
-    HttpServer, Responder,
+    body::BoxBody, get, http::header::ContentType, middleware::Logger, post, web, App, HttpRequest,
+    HttpResponse, HttpServer, Responder,
 };
+use env_logger::Env;
 use firestore::FirestoreDb;
 use serde::{Deserialize, Serialize};
 
@@ -105,6 +106,8 @@ struct AppState {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    env_logger::init_from_env(Env::default().default_filter_or("info"));
+
     let port = match std::env::var("PORT") {
         Ok(p) => p.parse::<u16>().unwrap(),
         Err(_) => 8080,
@@ -114,6 +117,7 @@ async fn main() -> std::io::Result<()> {
     println!("Starting esc-api on port {}...", port);
     HttpServer::new(move || {
         App::new()
+            .wrap(Logger::default())
             .app_data(web::Data::new(AppState { db: db.clone() }))
             .service(post_ranking)
             .service(get_ranking)
