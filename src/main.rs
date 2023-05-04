@@ -7,6 +7,7 @@ use firestore::FirestoreDb;
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 
+
 const RANKINGS_COLLECTION: &'static str = "rankings";
 const ENDRESULT_COLLECTION: &'static str = "endresult";
 const USER_COLLECTION: &'static str = "user";
@@ -48,10 +49,20 @@ async fn post_ranking(ranking: web::Json<Ranking>, data: web::Data<AppState>) ->
     HttpResponse::Ok().finish()
 }
 
-#[get("/ranking/{name}")]
-async fn get_ranking(path: web::Path<String>, data: web::Data<AppState>) -> impl Responder {
-    let name = path.into_inner();
+#[get("/ranking")]
+async fn get_ranking(req: HttpRequest, data: web::Data<AppState>) -> impl Responder {
+    let id_token = req.headers().get("Id-Token").unwrap().to_str().unwrap();
+    let key = data.gso_keys.first().unwrap();
+    let token = decode::<Claims>(
+        &id_token,
+        &DecodingKey::from_rsa_components(&key.n, &key.e).unwrap(),
+        &Validation::new(Algorithm::RS256),
+    )
+    .unwrap();
 
+    todo!("Somehow look up by id here...");
+
+    /*
     let ranking = data
         .db
         .fluent()
@@ -65,6 +76,8 @@ async fn get_ranking(path: web::Path<String>, data: web::Data<AppState>) -> impl
 
     let body = serde_json::to_string(&ranking).unwrap();
     HttpResponse::Ok().body(body)
+    */
+    HttpResponse::Ok()
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -88,14 +101,7 @@ async fn post_user(
 ) -> impl Responder {
     let id_token = req.headers().get("Id-Token").unwrap().to_str().unwrap();
 
-    let keys = reqwest::get("https://www.googleapis.com/oauth2/v3/certs")
-        .await
-        .unwrap()
-        .json::<Keys>()
-        .await
-        .unwrap();
-
-    let key = keys.keys.get(0).unwrap();
+    let key = data.gso_keys.first().unwrap();
     let token = decode::<Claims>(
         &id_token,
         &DecodingKey::from_rsa_components(&key.n, &key.e).unwrap(),
@@ -151,8 +157,10 @@ async fn result(data: web::Data<AppState>) -> impl Responder {
     HttpResponse::Ok().body(body)
 }
 
+#[derive(Clone)]
 struct AppState {
     db: FirestoreDb,
+    gso_keys: Vec<Key>
 }
 
 #[actix_web::main]
@@ -164,12 +172,21 @@ async fn main() -> std::io::Result<()> {
         Err(_) => 8080,
     };
 
-    let db = FirestoreDb::new("esc-api-384517").await.unwrap();
+    let appstate = {
+        let db = FirestoreDb::new("esc-api-384517").await.unwrap();
+
+        let gso_keys = reqwest::get("https://www.googleapis.com/oauth2/v3/certs")
+            .await.unwrap().json::<Keys>().await.unwrap().keys;
+
+
+        AppState { db: db, gso_keys: gso_keys }
+    };
+
     println!("Starting esc-api on port {}...", port);
     HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())
-            .app_data(web::Data::new(AppState { db: db.clone() }))
+            .app_data(web::Data::new(appstate.clone()))
             .service(post_user)
             .service(post_ranking)
             .service(get_ranking)
