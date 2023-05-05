@@ -1,3 +1,5 @@
+use std::{fs::File, io::Read};
+
 use actix_web::{
     body::BoxBody, get, http::header::ContentType, middleware::Logger, post, web, App, HttpRequest,
     HttpResponse, HttpServer, Responder,
@@ -17,7 +19,6 @@ const ENDRESULT_ID: &'static str = "endresult_id";
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 struct Ranking {
-    name: String,
     countries: Vec<String>,
 }
 
@@ -40,14 +41,14 @@ async fn post_ranking(
     req: HttpRequest,
     data: web::Data<AppState>,
 ) -> impl Responder {
-    auth::verify_login(req, data.gso_keys.clone(), data.cfg.clone()).unwrap();
+    let claims = auth::verify_login(req, data.gso_keys.clone(), data.cfg.clone()).unwrap();
     let r = ranking.0;
 
     data.db
         .fluent()
         .update()
         .in_col(RANKINGS_COLLECTION)
-        .document_id(&r.name)
+        .document_id(&claims.sub)
         .object(&r)
         .execute::<Ranking>()
         .await
@@ -69,7 +70,10 @@ async fn get_ranking(req: HttpRequest, data: web::Data<AppState>) -> impl Respon
         .one(claims.sub)
         .await
     {
-        Ok(ranking) => ranking.unwrap(),
+        Ok(ranking) => match ranking {
+            Some(r) => r,
+            None => get_default_ranking(),
+        },
         Err(_) => get_default_ranking(),
     };
 
@@ -78,10 +82,12 @@ async fn get_ranking(req: HttpRequest, data: web::Data<AppState>) -> impl Respon
 }
 
 fn get_default_ranking() -> Ranking {
-    Ranking {
-        name: "test".to_string(),
-        countries: Vec::new(),
-    }
+    let mut file = File::open("countries.json").unwrap();
+    let mut data = String::new();
+    file.read_to_string(&mut data).unwrap();
+
+    let countries = serde_json::from_str::<Vec<String>>(&data).unwrap();
+    Ranking { countries }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -185,4 +191,15 @@ async fn main() -> std::io::Result<()> {
     .bind(("0.0.0.0", port))?
     .run()
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::get_default_ranking;
+
+    #[test]
+    fn test_get_default_ranking() {
+        let ranking = get_default_ranking();
+        assert_eq!(37, ranking.countries.len());
+    }
 }
