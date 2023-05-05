@@ -176,7 +176,7 @@ async fn get_lock(req: HttpRequest, data: web::Data<AppState>) -> impl Responder
         .unwrap()
         .expect("lock not found");
 
-    let body = serde_json::to_string(&lock.lock).unwrap();
+    let body = serde_json::to_string(&lock).unwrap();
     return HttpResponse::Ok().body(body);
 }
 
