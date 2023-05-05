@@ -15,7 +15,10 @@ mod config;
 const RANKINGS_COLLECTION: &'static str = "rankings";
 const ENDRESULT_COLLECTION: &'static str = "endresult";
 const USER_COLLECTION: &'static str = "user";
+const LOCK_COLLECTION: &'static str = "lock";
+
 const ENDRESULT_ID: &'static str = "endresult_id";
+const LOCK_ID: &'static str = "lock_id";
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 struct Ranking {
@@ -153,6 +156,52 @@ async fn result(req: HttpRequest, data: web::Data<AppState>) -> impl Responder {
     HttpResponse::Ok().body(body)
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone)]
+struct Lock {
+    lock: bool,
+}
+
+#[get("/lock")]
+async fn get_lock(req: HttpRequest, data: web::Data<AppState>) -> impl Responder {
+    auth::verify_login(req, data.gso_keys.clone(), data.cfg.clone()).unwrap();
+
+    let lock = data
+        .db
+        .fluent()
+        .select()
+        .by_id_in(LOCK_COLLECTION)
+        .obj::<Lock>()
+        .one(LOCK_ID.to_string())
+        .await
+        .unwrap()
+        .expect("lock not found");
+
+    let body = serde_json::to_string(&lock.lock).unwrap();
+    return HttpResponse::Ok().body(body);
+}
+
+#[post("/lock")]
+async fn post_lock(
+    lock: web::Json<Lock>,
+    req: HttpRequest,
+    data: web::Data<AppState>,
+) -> impl Responder {
+    auth::verify_login(req, data.gso_keys.clone(), data.cfg.clone()).unwrap();
+
+    data.db
+        .fluent()
+        .update()
+        .in_col(LOCK_COLLECTION)
+        .document_id(LOCK_ID.to_string())
+        .object(&lock.0)
+        .execute::<Lock>()
+        .await
+        .unwrap();
+
+    let body = serde_json::to_string(&false).unwrap();
+    return HttpResponse::Ok().body(body);
+}
+
 #[derive(Clone)]
 struct AppState {
     db: FirestoreDb,
@@ -187,6 +236,8 @@ async fn main() -> std::io::Result<()> {
             .service(post_ranking)
             .service(get_ranking)
             .service(result)
+            .service(get_lock)
+            .service(post_lock)
     })
     .bind(("0.0.0.0", port))?
     .run()
