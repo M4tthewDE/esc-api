@@ -2,11 +2,13 @@ use actix_web::{
     body::BoxBody, get, http::header::ContentType, middleware::Logger, post, web, App, HttpRequest,
     HttpResponse, HttpServer, Responder,
 };
+use config::Config;
 use env_logger::Env;
 use firestore::FirestoreDb;
-use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 
+mod auth;
+mod config;
 
 const RANKINGS_COLLECTION: &'static str = "rankings";
 const ENDRESULT_COLLECTION: &'static str = "endresult";
@@ -33,7 +35,12 @@ impl Responder for Ranking {
 }
 
 #[post("/ranking")]
-async fn post_ranking(ranking: web::Json<Ranking>, data: web::Data<AppState>) -> impl Responder {
+async fn post_ranking(
+    ranking: web::Json<Ranking>,
+    req: HttpRequest,
+    data: web::Data<AppState>,
+) -> impl Responder {
+    auth::verify_login(req, data.gso_keys.clone(), data.cfg.clone()).unwrap();
     let r = ranking.0;
 
     data.db
@@ -51,46 +58,35 @@ async fn post_ranking(ranking: web::Json<Ranking>, data: web::Data<AppState>) ->
 
 #[get("/ranking")]
 async fn get_ranking(req: HttpRequest, data: web::Data<AppState>) -> impl Responder {
-    let id_token = req.headers().get("Id-Token").unwrap().to_str().unwrap();
-    let key = data.gso_keys.first().unwrap();
-    let token = decode::<Claims>(
-        &id_token,
-        &DecodingKey::from_rsa_components(&key.n, &key.e).unwrap(),
-        &Validation::new(Algorithm::RS256),
-    )
-    .unwrap();
+    let claims = auth::verify_login(req, data.gso_keys.clone(), data.cfg.clone()).unwrap();
 
-    todo!("Somehow look up by id here...");
-
-    /*
-    let ranking = data
+    let ranking = match data
         .db
         .fluent()
         .select()
         .by_id_in(RANKINGS_COLLECTION)
         .obj::<Ranking>()
-        .one(name)
+        .one(claims.sub)
         .await
-        .unwrap()
-        .expect("ranking not found");
+    {
+        Ok(ranking) => ranking.unwrap(),
+        Err(_) => get_default_ranking(),
+    };
 
     let body = serde_json::to_string(&ranking).unwrap();
     HttpResponse::Ok().body(body)
-    */
-    HttpResponse::Ok()
+}
+
+fn get_default_ranking() -> Ranking {
+    Ranking {
+        name: "test".to_string(),
+        countries: Vec::new(),
+    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 struct User {
     name: String,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct Claims {
-    aud: String,
-    iss: String,
-    exp: usize,
-    sub: String,
 }
 
 #[post("/user")]
@@ -99,21 +95,13 @@ async fn post_user(
     req: HttpRequest,
     data: web::Data<AppState>,
 ) -> impl Responder {
-    let id_token = req.headers().get("Id-Token").unwrap().to_str().unwrap();
-
-    let key = data.gso_keys.first().unwrap();
-    let token = decode::<Claims>(
-        &id_token,
-        &DecodingKey::from_rsa_components(&key.n, &key.e).unwrap(),
-        &Validation::new(Algorithm::RS256),
-    )
-    .unwrap();
+    let claims = auth::verify_login(req, data.gso_keys.clone(), data.cfg.clone()).unwrap();
 
     data.db
         .fluent()
         .update()
         .in_col(USER_COLLECTION)
-        .document_id(&token.claims.sub)
+        .document_id(&claims.sub)
         .object(&user.0)
         .execute::<User>()
         .await
@@ -141,7 +129,9 @@ impl Responder for EndResult {
 }
 
 #[get("/result")]
-async fn result(data: web::Data<AppState>) -> impl Responder {
+async fn result(req: HttpRequest, data: web::Data<AppState>) -> impl Responder {
+    auth::verify_login(req, data.gso_keys.clone(), data.cfg.clone()).unwrap();
+
     let result = data
         .db
         .fluent()
@@ -160,7 +150,8 @@ async fn result(data: web::Data<AppState>) -> impl Responder {
 #[derive(Clone)]
 struct AppState {
     db: FirestoreDb,
-    gso_keys: Vec<Key>
+    gso_keys: Vec<auth::Key>,
+    cfg: Config,
 }
 
 #[actix_web::main]
@@ -172,14 +163,13 @@ async fn main() -> std::io::Result<()> {
         Err(_) => 8080,
     };
 
+    let cfg = config::read("config.toml").unwrap();
+
     let appstate = {
         let db = FirestoreDb::new("esc-api-384517").await.unwrap();
+        let gso_keys = auth::get_keys().await;
 
-        let gso_keys = reqwest::get("https://www.googleapis.com/oauth2/v3/certs")
-            .await.unwrap().json::<Keys>().await.unwrap().keys;
-
-
-        AppState { db: db, gso_keys: gso_keys }
+        AppState { db, gso_keys, cfg }
     };
 
     println!("Starting esc-api on port {}...", port);
@@ -195,15 +185,4 @@ async fn main() -> std::io::Result<()> {
     .bind(("0.0.0.0", port))?
     .run()
     .await
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-struct Keys {
-    keys: Vec<Key>,
-}
-
-#[derive(Deserialize, Serialize, Debug, Clone)]
-struct Key {
-    n: String,
-    e: String,
 }
