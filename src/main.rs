@@ -44,7 +44,7 @@ async fn post_ranking(
     req: HttpRequest,
     data: web::Data<AppState>,
 ) -> impl Responder {
-    let claims = auth::verify_login(req, data.gso_keys.clone(), data.cfg.clone()).unwrap();
+    let claims = auth::verify_login(req, data.cfg.clone()).await.unwrap();
     let r = ranking.0;
 
     data.db
@@ -62,7 +62,7 @@ async fn post_ranking(
 
 #[get("/ranking")]
 async fn get_ranking(req: HttpRequest, data: web::Data<AppState>) -> impl Responder {
-    let claims = auth::verify_login(req, data.gso_keys.clone(), data.cfg.clone()).unwrap();
+    let claims = auth::verify_login(req, data.cfg.clone()).await.unwrap();
 
     let ranking = match data
         .db
@@ -104,7 +104,7 @@ async fn post_user(
     req: HttpRequest,
     data: web::Data<AppState>,
 ) -> impl Responder {
-    let claims = auth::verify_login(req, data.gso_keys.clone(), data.cfg.clone()).unwrap();
+    let claims = auth::verify_login(req, data.cfg.clone()).await.unwrap();
 
     data.db
         .fluent()
@@ -117,6 +117,28 @@ async fn post_user(
         .unwrap();
 
     HttpResponse::Ok()
+}
+
+#[get("/user")]
+async fn get_user(req: HttpRequest, data: web::Data<AppState>) -> impl Responder {
+    let claims = auth::verify_login(req, data.cfg.clone()).await.unwrap();
+
+    return match data
+        .db
+        .fluent()
+        .select()
+        .by_id_in(USER_COLLECTION)
+        .obj::<User>()
+        .one(claims.sub)
+        .await
+        .unwrap()
+    {
+        Some(user) => {
+            let body = serde_json::to_string(&user).unwrap();
+            return HttpResponse::Ok().body(body);
+        }
+        None => HttpResponse::NotFound().finish(),
+    };
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
@@ -139,7 +161,7 @@ impl Responder for EndResult {
 
 #[get("/result")]
 async fn result(req: HttpRequest, data: web::Data<AppState>) -> impl Responder {
-    auth::verify_login(req, data.gso_keys.clone(), data.cfg.clone()).unwrap();
+    auth::verify_login(req, data.cfg.clone()).await.unwrap();
 
     let result = data
         .db
@@ -163,7 +185,7 @@ struct Lock {
 
 #[get("/lock")]
 async fn get_lock(req: HttpRequest, data: web::Data<AppState>) -> impl Responder {
-    auth::verify_login(req, data.gso_keys.clone(), data.cfg.clone()).unwrap();
+    auth::verify_login(req, data.cfg.clone()).await.unwrap();
 
     let lock = data
         .db
@@ -186,7 +208,7 @@ async fn post_lock(
     req: HttpRequest,
     data: web::Data<AppState>,
 ) -> impl Responder {
-    auth::verify_login(req, data.gso_keys.clone(), data.cfg.clone()).unwrap();
+    auth::verify_login(req, data.cfg.clone()).await.unwrap();
 
     data.db
         .fluent()
@@ -205,7 +227,6 @@ async fn post_lock(
 #[derive(Clone)]
 struct AppState {
     db: FirestoreDb,
-    gso_keys: Vec<auth::Key>,
     cfg: Config,
 }
 
@@ -222,9 +243,8 @@ async fn main() -> std::io::Result<()> {
 
     let appstate = {
         let db = FirestoreDb::new("esc-api-384517").await.unwrap();
-        let gso_keys = auth::get_keys().await;
 
-        AppState { db, gso_keys, cfg }
+        AppState { db, cfg }
     };
 
     println!("Starting esc-api on port {}...", port);
@@ -233,6 +253,7 @@ async fn main() -> std::io::Result<()> {
             .wrap(Logger::default())
             .app_data(web::Data::new(appstate.clone()))
             .service(post_user)
+            .service(get_user)
             .service(post_ranking)
             .service(get_ranking)
             .service(result)
