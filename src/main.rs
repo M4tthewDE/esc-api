@@ -12,13 +12,13 @@ use serde::{Deserialize, Serialize};
 mod auth;
 mod config;
 
-const RANKINGS_COLLECTION: &'static str = "rankings";
-const ENDRESULT_COLLECTION: &'static str = "endresult";
-const USER_COLLECTION: &'static str = "user";
-const LOCK_COLLECTION: &'static str = "lock";
+const RANKINGS_COLLECTION: &str = "rankings";
+const ENDRESULT_COLLECTION: &str = "endresult";
+const USER_COLLECTION: &str = "user";
+const LOCK_COLLECTION: &str = "lock";
 
-const ENDRESULT_ID: &'static str = "endresult_id";
-const LOCK_ID: &'static str = "lock_id";
+const ENDRESULT_ID: &str = "endresult_id";
+const LOCK_ID: &str = "lock_id";
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 struct Ranking {
@@ -205,14 +205,10 @@ async fn get_score(req: HttpRequest, data: web::Data<AppState>) -> impl Responde
             .position(|c| c == country)
             .unwrap();
 
-        let diff;
-        if index < end_result_index {
-            diff = end_result_index - index
-        } else if end_result_index < index {
-            diff = index - end_result_index
-        } else {
-            diff = 0
-        }
+        let diff = match index <= end_result_index {
+            true => end_result_index - index,
+            false => index - end_result_index,
+        };
 
         let score = 3 - diff;
         detailed_score.insert(country.to_string(), score);
@@ -249,7 +245,7 @@ async fn get_lock(req: HttpRequest, data: web::Data<AppState>) -> impl Responder
         .expect("lock not found");
 
     let body = serde_json::to_string(&lock).unwrap();
-    return HttpResponse::Ok().body(body);
+    HttpResponse::Ok().body(body)
 }
 
 #[post("/lock")]
@@ -271,7 +267,7 @@ async fn post_lock(
         .unwrap();
 
     let body = serde_json::to_string(&false).unwrap();
-    return HttpResponse::Ok().body(body);
+    HttpResponse::Ok().body(body)
 }
 
 #[derive(Clone)]
@@ -297,7 +293,7 @@ async fn main() -> std::io::Result<()> {
         AppState { db, cfg }
     };
 
-    println!("Starting esc-api on port {}...", port);
+    println!("Starting esc-api on port {port}...");
     HttpServer::new(move || {
         App::new()
             .wrap(Logger::default())

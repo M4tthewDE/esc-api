@@ -30,11 +30,10 @@ pub struct Claims {
 pub async fn verify_login(req: HttpRequest, cfg: Config) -> Result<Claims, String> {
     let keys = get_keys().await;
     let id_token = req.headers().get("Id-Token").unwrap().to_str().unwrap();
-    println!("{:?}", id_token);
 
     let key = keys.first().unwrap();
     let token = decode::<Claims>(
-        &id_token,
+        id_token,
         &DecodingKey::from_rsa_components(&key.n, &key.e).unwrap(),
         &Validation::new(Algorithm::RS256),
     )
