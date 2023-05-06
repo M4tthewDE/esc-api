@@ -1,4 +1,4 @@
-use std::{fs::File, io::Read};
+use std::{collections::HashMap, fs::File, io::Read};
 
 use actix_web::{
     body::BoxBody, get, http::header::ContentType, middleware::Logger, post, web, App, HttpRequest,
@@ -159,11 +159,17 @@ impl Responder for EndResult {
     }
 }
 
-#[get("/result")]
-async fn result(req: HttpRequest, data: web::Data<AppState>) -> impl Responder {
-    auth::verify_login(req, data.cfg.clone()).await.unwrap();
+#[derive(Deserialize, Serialize, Debug, Clone)]
+struct Score {
+    overall_score: usize,
+    detailed_score: HashMap<String, usize>,
+}
 
-    let result = data
+#[get("/score")]
+async fn get_score(req: HttpRequest, data: web::Data<AppState>) -> impl Responder {
+    let claims = auth::verify_login(req, data.cfg.clone()).await.unwrap();
+
+    let end_result = data
         .db
         .fluent()
         .select()
@@ -174,7 +180,51 @@ async fn result(req: HttpRequest, data: web::Data<AppState>) -> impl Responder {
         .unwrap()
         .expect("ranking not found");
 
-    let body = serde_json::to_string(&result).unwrap();
+    let user_ranking = match data
+        .db
+        .fluent()
+        .select()
+        .by_id_in(RANKINGS_COLLECTION)
+        .obj::<Ranking>()
+        .one(claims.sub)
+        .await
+    {
+        Ok(ranking) => match ranking {
+            Some(r) => r,
+            None => get_default_ranking(),
+        },
+        Err(_) => get_default_ranking(),
+    };
+
+    let mut overall_score = 0;
+    let mut detailed_score: HashMap<String, usize> = HashMap::new();
+    for (index, country) in user_ranking.countries.iter().enumerate() {
+        let end_result_index = end_result
+            .countries
+            .iter()
+            .position(|c| c == country)
+            .unwrap();
+
+        let diff;
+        if index < end_result_index {
+            diff = end_result_index - index
+        } else if end_result_index < index {
+            diff = index - end_result_index
+        } else {
+            diff = 0
+        }
+
+        let score = 3 - diff;
+        detailed_score.insert(country.to_string(), score);
+        overall_score += score;
+    }
+
+    let score = Score {
+        overall_score,
+        detailed_score,
+    };
+
+    let body = serde_json::to_string(&score).unwrap();
     HttpResponse::Ok().body(body)
 }
 
@@ -256,7 +306,7 @@ async fn main() -> std::io::Result<()> {
             .service(get_user)
             .service(post_ranking)
             .service(get_ranking)
-            .service(result)
+            .service(get_score)
             .service(get_lock)
             .service(post_lock)
     })
