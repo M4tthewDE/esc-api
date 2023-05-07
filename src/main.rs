@@ -143,26 +143,14 @@ async fn get_user(req: HttpRequest, data: web::Data<AppState>) -> impl Responder
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 struct EndResult {
+    done: bool,
     countries: Vec<String>,
-}
-
-impl Responder for EndResult {
-    type Body = BoxBody;
-
-    fn respond_to(self, _req: &HttpRequest) -> HttpResponse<Self::Body> {
-        let body = serde_json::to_string(&self).unwrap();
-
-        // Create response and set content type
-        HttpResponse::Ok()
-            .content_type(ContentType::json())
-            .body(body)
-    }
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 struct Score {
-    overall_score: usize,
-    detailed_score: HashMap<String, usize>,
+    score: usize,
+    detailed: HashMap<String, usize>,
 }
 
 #[get("/score")]
@@ -179,6 +167,10 @@ async fn get_score(req: HttpRequest, data: web::Data<AppState>) -> impl Responde
         .await
         .unwrap()
         .expect("ranking not found");
+
+    if !end_result.done {
+        return HttpResponse::NotFound().finish();
+    }
 
     let user_ranking = match data
         .db
@@ -210,14 +202,14 @@ async fn get_score(req: HttpRequest, data: web::Data<AppState>) -> impl Responde
             false => index - end_result_index,
         };
 
-        let score = 3 - diff;
+        let score = 3_usize.checked_sub(diff).or(Some(0)).unwrap();
         detailed_score.insert(country.to_string(), score);
         overall_score += score;
     }
 
     let score = Score {
-        overall_score,
-        detailed_score,
+        score: overall_score,
+        detailed: detailed_score,
     };
 
     let body = serde_json::to_string(&score).unwrap();

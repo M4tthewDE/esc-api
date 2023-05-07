@@ -31,28 +31,33 @@ pub async fn verify_login(req: HttpRequest, cfg: Config) -> Result<Claims, Strin
     let keys = get_keys().await;
     let id_token = req.headers().get("Id-Token").unwrap().to_str().unwrap();
 
-    let key = keys.first().unwrap();
-    let token = decode::<Claims>(
-        id_token,
-        &DecodingKey::from_rsa_components(&key.n, &key.e).unwrap(),
-        &Validation::new(Algorithm::RS256),
-    )
-    .map_err(|e| e.to_string())?;
+    for key in keys {
+        match decode::<Claims>(
+            id_token,
+            &DecodingKey::from_rsa_components(&key.n, &key.e).unwrap(),
+            &Validation::new(Algorithm::RS256),
+        ) {
+            Ok(token) => {
+                if token.claims.aud != cfg.google.client_id {
+                    return Err("Invalid client_id".to_string());
+                }
 
-    if token.claims.aud != cfg.google.client_id {
-        return Err("Invalid client_id".to_string());
+                let valid_iss = vec![
+                    "accounts.google.com".to_string(),
+                    "https://accounts.google.com".to_string(),
+                ];
+
+                if !valid_iss.contains(&token.claims.iss) {
+                    return Err("Invalid iss".to_string());
+                }
+
+                return Ok(token.claims);
+            }
+            _ => (),
+        }
     }
 
-    let valid_iss = vec![
-        "accounts.google.com".to_string(),
-        "https://accounts.google.com".to_string(),
-    ];
-
-    if !valid_iss.contains(&token.claims.iss) {
-        return Err("Invalid iss".to_string());
-    }
-
-    Ok(token.claims)
+    Err("No working key found".to_string())
 }
 
 pub async fn get_keys() -> Vec<Key> {
