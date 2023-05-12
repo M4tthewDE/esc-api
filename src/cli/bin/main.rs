@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fs::File, io::Read};
+use std::{fs::File, io::Read};
 
 use firestore::FirestoreDb;
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
@@ -21,7 +21,7 @@ struct EndResult {
 #[tokio::main]
 async fn main() {
     let db = FirestoreDb::new("esc-api-384517").await.unwrap();
-    let countries = match db
+    let mut ranking = match db
         .fluent()
         .select()
         .by_id_in(ENDRESULT_COLLECTION)
@@ -34,11 +34,13 @@ async fn main() {
         None => get_countries(),
     };
 
-    let mut country_scores = HashMap::new();
-    for country in countries.clone() {
-        country_scores.insert(country, 0);
+    for (i, country) in ranking.iter().enumerate() {
+        println!("{}: {country}", i + 1)
     }
-    let autocompleter = CountryHelper { countries };
+
+    let autocompleter = CountryHelper {
+        countries: ranking.clone(),
+    };
 
     loop {
         let country = Text::new("Country")
@@ -47,9 +49,13 @@ async fn main() {
             .prompt()
             .unwrap();
 
-        let score = CustomType::<u32>::new("Score").prompt().unwrap();
-        country_scores.insert(country, score);
-        let ranking = score_map_to_vec(country_scores.clone());
+        let position = CustomType::<usize>::new("Position").prompt().unwrap() - 1;
+        ranking.remove(ranking.iter().position(|x| *x == country).unwrap());
+        ranking.insert(position, country);
+
+        for (i, country) in ranking.iter().enumerate() {
+            println!("{}: {country}", i + 1)
+        }
 
         db.fluent()
             .update()
@@ -57,19 +63,12 @@ async fn main() {
             .document_id(ENDRESULT_ID)
             .object(&EndResult {
                 done: false,
-                countries: ranking,
+                countries: ranking.clone(),
             })
             .execute::<EndResult>()
             .await
             .unwrap();
     }
-}
-
-fn score_map_to_vec(map: HashMap<String, u32>) -> Vec<String> {
-    let mut ranking_vec: Vec<(&String, &u32)> = map.iter().collect();
-    ranking_vec.sort_by(|a, b| b.1.cmp(a.1));
-
-    return ranking_vec.iter().map(|x| x.0.to_string()).collect();
 }
 
 fn get_countries() -> Vec<String> {
