@@ -4,13 +4,11 @@ use actix_web::{
     body::BoxBody, get, http::header::ContentType, middleware::Logger, post, web, App, HttpRequest,
     HttpResponse, HttpServer, Responder,
 };
-use config::Config;
 use env_logger::Env;
 use firestore::FirestoreDb;
 use serde::{Deserialize, Serialize};
 
 mod auth;
-mod config;
 
 const RANKINGS_COLLECTION: &str = "rankings";
 const ENDRESULT_COLLECTION: &str = "endresult";
@@ -44,7 +42,9 @@ async fn post_ranking(
     req: HttpRequest,
     data: web::Data<AppState>,
 ) -> impl Responder {
-    let claims = auth::verify_login(req, data.cfg.clone()).await.unwrap();
+    let claims = auth::verify_login(req, data.client_id.clone())
+        .await
+        .unwrap();
     let r = ranking.0;
 
     data.db
@@ -62,7 +62,9 @@ async fn post_ranking(
 
 #[get("/ranking")]
 async fn get_ranking(req: HttpRequest, data: web::Data<AppState>) -> impl Responder {
-    let claims = auth::verify_login(req, data.cfg.clone()).await.unwrap();
+    let claims = auth::verify_login(req, data.client_id.clone())
+        .await
+        .unwrap();
 
     let ranking = match data
         .db
@@ -104,7 +106,9 @@ async fn post_user(
     req: HttpRequest,
     data: web::Data<AppState>,
 ) -> impl Responder {
-    let claims = auth::verify_login(req, data.cfg.clone()).await.unwrap();
+    let claims = auth::verify_login(req, data.client_id.clone())
+        .await
+        .unwrap();
 
     data.db
         .fluent()
@@ -121,7 +125,9 @@ async fn post_user(
 
 #[get("/user")]
 async fn get_user(req: HttpRequest, data: web::Data<AppState>) -> impl Responder {
-    let claims = auth::verify_login(req, data.cfg.clone()).await.unwrap();
+    let claims = auth::verify_login(req, data.client_id.clone())
+        .await
+        .unwrap();
 
     return match data
         .db
@@ -155,7 +161,9 @@ struct Score {
 
 #[get("/score")]
 async fn get_score(req: HttpRequest, data: web::Data<AppState>) -> impl Responder {
-    let claims = auth::verify_login(req, data.cfg.clone()).await.unwrap();
+    let claims = auth::verify_login(req, data.client_id.clone())
+        .await
+        .unwrap();
 
     let end_result = data
         .db
@@ -223,7 +231,9 @@ struct Lock {
 
 #[get("/lock")]
 async fn get_lock(req: HttpRequest, data: web::Data<AppState>) -> impl Responder {
-    auth::verify_login(req, data.cfg.clone()).await.unwrap();
+    auth::verify_login(req, data.client_id.clone())
+        .await
+        .unwrap();
 
     let lock = data
         .db
@@ -246,7 +256,9 @@ async fn post_lock(
     req: HttpRequest,
     data: web::Data<AppState>,
 ) -> impl Responder {
-    auth::verify_login(req, data.cfg.clone()).await.unwrap();
+    auth::verify_login(req, data.client_id.clone())
+        .await
+        .unwrap();
 
     data.db
         .fluent()
@@ -270,7 +282,7 @@ async fn health() -> impl Responder {
 #[derive(Clone)]
 struct AppState {
     db: FirestoreDb,
-    cfg: Config,
+    client_id: String,
 }
 
 #[actix_web::main]
@@ -282,12 +294,12 @@ async fn main() -> std::io::Result<()> {
         Err(_) => 8080,
     };
 
-    let cfg = config::read("config.toml").unwrap();
+    let client_id = std::env::var("CLIENT_ID").unwrap();
 
     let appstate = {
         let db = FirestoreDb::new("esc-2024-422706").await.unwrap();
 
-        AppState { db, cfg }
+        AppState { db, client_id }
     };
 
     println!("Starting esc-api on port {port}...");

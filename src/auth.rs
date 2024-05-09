@@ -2,8 +2,6 @@ use actix_web::HttpRequest;
 use jsonwebtoken::{decode, Algorithm, DecodingKey, Validation};
 use serde::{Deserialize, Serialize};
 
-use crate::config::Config;
-
 #[derive(Deserialize, Serialize, Debug, Clone)]
 struct Keys {
     keys: Vec<Key>,
@@ -27,7 +25,7 @@ pub struct Claims {
     pub sub: String,
 }
 
-pub async fn verify_login(req: HttpRequest, cfg: Config) -> Result<Claims, String> {
+pub async fn verify_login(req: HttpRequest, client_id: String) -> Result<Claims, String> {
     let keys = get_keys().await;
     let id_token = req.headers().get("Id-Token").unwrap().to_str().unwrap();
 
@@ -38,7 +36,7 @@ pub async fn verify_login(req: HttpRequest, cfg: Config) -> Result<Claims, Strin
             &Validation::new(Algorithm::RS256),
         ) {
             Ok(token) => {
-                if token.claims.aud != cfg.google.client_id {
+                if token.claims.aud != client_id {
                     return Err("Invalid client_id".to_string());
                 }
 
