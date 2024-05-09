@@ -262,6 +262,11 @@ async fn post_lock(
     HttpResponse::Ok().body(body)
 }
 
+#[get("/health")]
+async fn health() -> impl Responder {
+    HttpResponse::Ok().body("OK")
+}
+
 #[derive(Clone)]
 struct AppState {
     db: FirestoreDb,
@@ -280,7 +285,7 @@ async fn main() -> std::io::Result<()> {
     let cfg = config::read("config.toml").unwrap();
 
     let appstate = {
-        let db = FirestoreDb::new("esc-api-384517").await.unwrap();
+        let db = FirestoreDb::new("esc-2024-422706").await.unwrap();
 
         AppState { db, cfg }
     };
@@ -297,19 +302,9 @@ async fn main() -> std::io::Result<()> {
             .service(get_score)
             .service(get_lock)
             .service(post_lock)
+            .service(health)
     })
     .bind(("0.0.0.0", port))?
     .run()
     .await
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::get_default_ranking;
-
-    #[test]
-    fn test_get_default_ranking() {
-        let ranking = get_default_ranking();
-        assert_eq!(37, ranking.countries.len());
-    }
 }

@@ -19,7 +19,7 @@ pub fn read(path: &str) -> Result<Config, String> {
         .map_err(|e| e.to_string())?;
 
     if config.google.client_id.is_empty() {
-        return Err("Must include a twitch client id".to_string());
+        return Err("Must include a google client id".to_string());
     }
 
     Ok(config)

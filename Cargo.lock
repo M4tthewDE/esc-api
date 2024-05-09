@@ -709,6 +709,7 @@ dependencies = [
  "fuzzy-matcher",
  "inquire",
  "jsonwebtoken",
+ "rand",
  "reqwest",
  "serde",
  "serde_json",
