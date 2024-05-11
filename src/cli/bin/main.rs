@@ -1,6 +1,6 @@
 use std::{fs::File, io::Read};
 
-use firestore::FirestoreDb;
+use firestore::{FirestoreDb, FirestoreDbOptions};
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 use inquire::{
     autocompletion::Replacement,
@@ -20,7 +20,12 @@ struct EndResult {
 
 #[tokio::main]
 async fn main() {
-    let db = FirestoreDb::new("esc-api-384517").await.unwrap();
+    let db = FirestoreDb::with_options_service_account_key_file(
+        FirestoreDbOptions::new("esc-2024-422706".to_string()),
+        "esc-2024-422706-4e4c77825a5c.json".into(),
+    )
+    .await
+    .unwrap();
     let mut ranking = match db
         .fluent()
         .select()

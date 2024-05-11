@@ -13,7 +13,7 @@ path = "src/cli/bin/main.rs"
 [dependencies]
 actix-web = "4"
 env_logger = "0.10.0"
-firestore = "0.32.0"
+firestore = "0.41.0"
 jsonwebtoken = "8.3.0"
 reqwest = "0.11.17"
 serde = { version = "1.0", features = ["derive"] }
@@ -23,3 +23,4 @@ inquire = "0.6.2"
 fuzzy-matcher = "0.3.7"
 tokio = {version = "1.28.1", features = ["rt-multi-thread"]}
 rand = "0.8.5"
+chrono = "0.4.38"
