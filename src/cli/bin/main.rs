@@ -20,9 +20,8 @@ struct EndResult {
 
 #[tokio::main]
 async fn main() {
-    let db = FirestoreDb::with_options_service_account_key_file(
-        FirestoreDbOptions::new("esc-2024-422706".to_string()),
-        "esc-2024-422706-4e4c77825a5c.json".into(),
+    let db = FirestoreDb::with_options(
+        FirestoreDbOptions::new("esc2025".to_string()).with_database_id("esc2025".to_string()),
     )
     .await
     .unwrap();

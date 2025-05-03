@@ -297,7 +297,7 @@ async fn main() -> std::io::Result<()> {
     let client_id = std::env::var("CLIENT_ID").unwrap();
 
     let appstate = {
-        let db = FirestoreDb::new("esc-2024-422706").await.unwrap();
+        let db = FirestoreDb::new("esc2025").await.unwrap();
 
         AppState { db, client_id }
     };

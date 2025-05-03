@@ -11,16 +11,17 @@ path = "src/cli/bin/main.rs"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-actix-web = "4"
-env_logger = "0.10.0"
-firestore = "0.41.0"
-jsonwebtoken = "8.3.0"
-reqwest = "0.11.17"
+actix-web = "4.10.2"
+env_logger = "0.11.8"
+firestore = "0.45.0"
+jsonwebtoken = "9.3.1"
+reqwest = "0.12.15"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.96"
 figment = { version = "0.10.8", features = ["toml"] }
 inquire = "0.6.2"
 fuzzy-matcher = "0.3.7"
-tokio = {version = "1.28.1", features = ["rt-multi-thread"]}
+tokio = {version = "1.44.2", features = ["rt-multi-thread"]}
 rand = "0.8.5"
-chrono = "0.4.38"
+chrono = "0.4.41"
+time = "0.3.35"
