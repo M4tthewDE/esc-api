@@ -20,11 +20,8 @@ struct EndResult {
 
 #[tokio::main]
 async fn main() {
-    let db = FirestoreDb::with_options(
-        FirestoreDbOptions::new("esc2025".to_string()).with_database_id("esc2025".to_string()),
-    )
-    .await
-    .unwrap();
+    let db = FirestoreDb::new("esc2025").await.unwrap();
+
     let mut ranking = match db
         .fluent()
         .select()

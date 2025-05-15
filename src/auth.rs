@@ -29,11 +29,14 @@ pub async fn verify_login(req: HttpRequest, client_id: String) -> Result<Claims,
     let keys = get_keys().await;
     let id_token = req.headers().get("Id-Token").unwrap().to_str().unwrap();
 
+    let mut validation = Validation::new(Algorithm::RS256);
+    validation.set_audience(&[&client_id]);
+
     for key in keys {
         match decode::<Claims>(
             id_token,
             &DecodingKey::from_rsa_components(&key.n, &key.e).unwrap(),
-            &Validation::new(Algorithm::RS256),
+            &validation,
         ) {
             Ok(token) => {
                 if token.claims.aud != client_id {
@@ -51,7 +54,9 @@ pub async fn verify_login(req: HttpRequest, client_id: String) -> Result<Claims,
 
                 return Ok(token.claims);
             }
-            _ => (),
+            Err(err) => {
+                println!("decoding failed: {err:?}");
+            }
         }
     }
 
