@@ -1,6 +1,6 @@
 use std::{fs::File, io::Read};
 
-use firestore::{FirestoreDb, FirestoreDbOptions};
+use firestore::FirestoreDb;
 use fuzzy_matcher::{skim::SkimMatcherV2, FuzzyMatcher};
 use inquire::{
     autocompletion::Replacement,
