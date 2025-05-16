@@ -5,7 +5,8 @@ use actix_web::{
     HttpResponse, HttpServer, Responder,
 };
 use env_logger::Env;
-use firestore::FirestoreDb;
+use firestore::{FirestoreDb, FirestoreDocument};
+use futures::{stream::BoxStream, StreamExt};
 use serde::{Deserialize, Serialize};
 
 mod auth;
@@ -154,9 +155,16 @@ struct EndResult {
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
+struct LeaderBoardEntry {
+    name: String,
+    score: usize,
+}
+
+#[derive(Deserialize, Serialize, Debug, Clone)]
 struct Score {
     score: usize,
     detailed: HashMap<String, usize>,
+    leaderboard: Vec<LeaderBoardEntry>,
 }
 
 #[get("/score")]
@@ -215,13 +223,84 @@ async fn get_score(req: HttpRequest, data: web::Data<AppState>) -> impl Responde
         overall_score += score;
     }
 
+    let leaderboard = calculate_leaderboard(&data.db, &end_result).await;
+
     let score = Score {
         score: overall_score,
         detailed: detailed_score,
+        leaderboard,
     };
 
     let body = serde_json::to_string(&score).unwrap();
     HttpResponse::Ok().body(body)
+}
+
+async fn calculate_leaderboard(db: &FirestoreDb, end_result: &EndResult) -> Vec<LeaderBoardEntry> {
+    let user_stream: BoxStream<FirestoreDocument> = db
+        .fluent()
+        .list()
+        .from(USER_COLLECTION)
+        .stream_all()
+        .await
+        .unwrap();
+
+    let user_documents: Vec<FirestoreDocument> = user_stream.collect().await;
+
+    let mut leaderboard = vec![];
+
+    for user_document in user_documents {
+        let id = user_document.name.split('/').last().unwrap();
+
+        let user = db
+            .fluent()
+            .select()
+            .by_id_in(USER_COLLECTION)
+            .obj::<User>()
+            .one(id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let user_ranking = match db
+            .fluent()
+            .select()
+            .by_id_in(RANKINGS_COLLECTION)
+            .obj::<Ranking>()
+            .one(id)
+            .await
+        {
+            Ok(ranking) => match ranking {
+                Some(r) => r,
+                None => get_default_ranking(),
+            },
+            Err(_) => get_default_ranking(),
+        };
+
+        let mut score = 0;
+        for (index, country) in user_ranking.countries.iter().enumerate() {
+            let end_result_index = end_result
+                .countries
+                .iter()
+                .position(|c| c == country)
+                .unwrap();
+
+            let diff = match index <= end_result_index {
+                true => end_result_index - index,
+                false => index - end_result_index,
+            };
+
+            score += 3_usize.checked_sub(diff).or(Some(0)).unwrap();
+        }
+
+        leaderboard.push(LeaderBoardEntry {
+            name: user.name,
+            score,
+        })
+    }
+
+    leaderboard.sort_by(|a, b| b.score.cmp(&a.score));
+
+    return leaderboard;
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]

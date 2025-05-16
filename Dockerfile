@@ -1,4 +1,4 @@
-FROM rust:1.82 as build
+FROM rust:1.82 AS build
 
 WORKDIR /usr/src/esc-api
 

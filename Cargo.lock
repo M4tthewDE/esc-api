@@ -801,6 +801,7 @@ dependencies = [
  "env_logger",
  "figment",
  "firestore",
+ "futures",
  "fuzzy-matcher",
  "inquire",
  "jsonwebtoken",
